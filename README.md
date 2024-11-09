@@ -105,7 +105,7 @@ pip install aiohttp colorama urllib.parse
 4. Install dependensi:
 
    ```bash
-   pip install -r requirements.txt
+   pip install aiohttp colorama urllib.parse
    ```
 
 5. Jalankan script:
