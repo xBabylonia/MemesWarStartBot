@@ -15,6 +15,13 @@ init()
 logging.basicConfig(level=logging.INFO, format='%(message)s')
 logger = logging.getLogger(__name__)
 
+# Add constant for expected base URL
+EXPECTED_BASE_URL = "https://memes-war.memecore.com/api"
+
+class APIEndpointError(Exception):
+    """Custom exception for API endpoint changes"""
+    pass
+
 def encode_init_data(raw_init_data: str) -> str:
     """Convert raw init data to properly encoded format for cookies."""
     decoded = urllib.parse.unquote(raw_init_data)
@@ -53,7 +60,7 @@ def read_accounts() -> List[str]:
 
 class MemesWarAPI:
     def __init__(self, telegram_init_data: str):
-        self.base_url = "https://memes-war.memecore.com/api"
+        self.base_url = EXPECTED_BASE_URL
         self.headers = {
             "accept": "*/*",
             "accept-encoding": "gzip, deflate, br, zstd",
@@ -70,6 +77,26 @@ class MemesWarAPI:
         self.cookies = {
             "telegramInitData": telegram_init_data
         }
+
+    async def validate_api_endpoint(self) -> bool:
+        """Validate if the API endpoint is still accessible and unchanged."""
+        try:
+            async with aiohttp.ClientSession(headers=self.headers, cookies=self.cookies) as session:
+                # Try to access the user endpoint as a test
+                async with session.get(f"{self.base_url}/user") as response:
+                    if response.status == 404:
+                        logger.error(f"{Fore.RED}[!] API endpoint not found. The API URL might have changed.{Style.RESET_ALL}")
+                        raise APIEndpointError("API endpoint not found")
+                    elif response.status != 200:
+                        logger.error(f"{Fore.RED}[!] API endpoint returned unexpected status: {response.status}{Style.RESET_ALL}")
+                        raise APIEndpointError(f"Unexpected API response: {response.status}")
+                    return True
+        except aiohttp.ClientConnectionError:
+            logger.error(f"{Fore.RED}[!] Cannot connect to API. The endpoint might have changed.{Style.RESET_ALL}")
+            raise APIEndpointError("Cannot connect to API")
+        except Exception as e:
+            logger.error(f"{Fore.RED}[!] Error validating API endpoint: {str(e)}{Style.RESET_ALL}")
+            raise APIEndpointError(f"API validation error: {str(e)}")
 
     def print_banner(self):
         banner = f"""{Fore.CYAN}
@@ -280,10 +307,18 @@ class MemesWarAPI:
         return await self.get_user_info(print_info=True)
 
 async def process_account(init_data: str, account_number: int, total_accounts: int):
-    """Process a single account with improved warbond handling."""
+    """Process a single account with API endpoint validation."""
     logger.info(f"\n{Fore.YELLOW}[*] Account {account_number}/{total_accounts}{Style.RESET_ALL}")
     
     api = MemesWarAPI(init_data)
+    
+    # Validate API endpoint before processing
+    try:
+        await api.validate_api_endpoint()
+    except APIEndpointError as e:
+        logger.error(f"{Fore.RED}[!] API endpoint validation failed: {str(e)}{Style.RESET_ALL}")
+        logger.error(f"{Fore.RED}[!] Stopping script execution{Style.RESET_ALL}")
+        raise SystemExit("Script stopped due to API endpoint change")
     
     async def check_and_send_warbonds(stage: str):
         """Helper function to check and send warbonds with proper logging."""
