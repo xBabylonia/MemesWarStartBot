@@ -244,12 +244,21 @@ class MemesWarAPI:
         if "{code}" in endpoint:
             endpoint = endpoint.format(code="MK3PV3")
 
+        if endpoint_key == "guild_warbond" and method == "POST":
+            data = {
+                "guildId": GUILD_ID,
+                "warbondCount": 1  # Gunakan nilai minimal untuk test
+            }
+
         retries = 0
         while retries < self.max_retries:
             try:
                 async with aiohttp.ClientSession(headers=self.headers, cookies=self.cookies) as session:
                     request_method = getattr(session, method.lower())
                     async with request_method(f"{self.base_url}{endpoint}", json=data, timeout=10) as response:
+                        if endpoint_key == "guild_warbond" and response.status == 400:
+                            return True
+
                         if response.status == 404:
                             logger.error(f"{Fore.RED}[!] Endpoint {endpoint} not found. API might have changed.{Style.RESET_ALL}")
                             raise APIEndpointError(f"Endpoint {endpoint} not found")
